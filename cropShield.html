@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CropShield</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="/_sdk/data_sdk.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Noto+Sans+Tamil:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font-family: 'DM Sans', sans-serif; }
+
+.drop-zone { transition: all 0.3s ease; }
+.drop-zone.dragover { border-color: #16a34a; background: rgba(22,163,74,0.08); transform: scale(1.01); }
+.page { display: none; }
+.page.active { display: flex; }
+.nav-btn.active { background: var(--primary-action); color: #fff; }
+.nav-btn { transition: all 0.2s; }
+
+.card-enter { animation: cardIn 0.4s ease forwards; }
+@keyframes cardIn { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
+@keyframes pulse-glow { 0%,100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.2); } 50% { box-shadow: 0 0 20px 4px rgba(22,163,74,0.15); } }
+.analyzing { animation: pulse-glow 1.5s infinite; }
+
+.severity-low { background: #dcfce7; color: #166534; }
+.severity-medium { background: #fef9c3; color: #854d0e; }
+.severity-high { background: #fee2e2; color: #991b1b; }
+
+:root {
+  --bg-color: #0f1a0f;
+  --surface-color: #1a2e1a;
+  --text-color: #e8f5e8;
+  --primary-action: #16a34a;
+  --secondary-action: #2d5a2d;
+}
+</style>
+  <style>body { box-sizing: border-box; }</style>
+ </head>
+ <body class="h-full overflow-auto" style="background:var(--bg-color); color:var(--text-color);">
+  <div id="app" class="h-full flex flex-col w-full"><!-- Top Bar -->
+   <header class="flex items-center justify-between px-5 py-3 border-b" style="border-color:var(--secondary-action); background:var(--surface-color);">
+    <div class="flex items-center gap-2">
+     <div class="w-9 h-9 rounded-lg flex items-center justify-center text-lg" style="background:var(--primary-action);">
+      🛡️
+     </div>
+     <div>
+      <h1 id="app-title" class="text-lg font-bold leading-tight">CropShield</h1>
+      <p id="app-tagline" class="text-xs opacity-60" style="font-family:'Noto Sans Tamil','DM Sans',sans-serif;">Protect your crops • உங்கள் பயிர்களைப் பாதுகாக்கவும்</p>
+     </div>
+    </div><button id="lang-toggle" onclick="toggleLang()" class="px-3 py-1.5 rounded-lg text-sm font-medium" style="background:var(--secondary-action);"> தமிழ் </button>
+   </header><!-- Navigation -->
+   <nav class="flex gap-2 px-5 py-3" style="background:var(--surface-color);"><button class="nav-btn active flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" onclick="showPage('home')" data-page="home"> <i data-lucide="scan-line" style="width:16px;height:16px;"></i> <span data-i18n="nav_analyze">Analyze</span> </button> <button class="nav-btn flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium" onclick="showPage('history')" data-page="history" style="background:transparent;"> <i data-lucide="history" style="width:16px;height:16px;"></i> <span data-i18n="nav_history">History</span> </button>
+   </nav><!-- HOME PAGE -->
+   <div id="page-home" class="page active flex-1 flex flex-col p-5 gap-5 overflow-auto"><!-- Drop Zone -->
+    <div id="drop-zone" class="drop-zone border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer min-h-[220px]" style="border-color:var(--secondary-action); background:rgba(22,163,74,0.04);" onclick="document.getElementById('file-input').click()"><input type="file" id="file-input" accept="image/*" class="hidden" onchange="handleFile(event)">
+     <div class="w-16 h-16 rounded-full flex items-center justify-center mb-4" style="background:var(--secondary-action);"><i data-lucide="upload-cloud" style="width:32px;height:32px;color:var(--primary-action);"></i>
+     </div>
+     <p class="font-semibold text-lg mb-1" data-i18n="drop_title">Drag &amp; Drop Crop Image</p>
+     <p class="text-sm opacity-50" data-i18n="drop_sub">or click to browse • JPG, PNG supported</p>
+    </div><!-- Preview & Analyze -->
+    <div id="preview-section" class="hidden">
+     <div class="rounded-2xl overflow-hidden" style="background:var(--surface-color);">
+      <div class="relative"><img id="preview-img" class="w-full h-48 object-cover" src="" alt="Crop preview"> <button onclick="clearPreview()" class="absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center" style="background:rgba(0,0,0,0.6);"><i data-lucide="x" style="width:16px;height:16px;"></i></button>
+      </div>
+      <div class="p-4"><label class="block text-sm mb-2 opacity-70" data-i18n="crop_label">Crop Name</label> <input id="crop-name" type="text" placeholder="e.g. Rice, Tomato" class="w-full px-4 py-2.5 rounded-lg text-sm outline-none" style="background:var(--bg-color); border:1px solid var(--secondary-action); color:var(--text-color);"> <button id="analyze-btn" onclick="analyzeDisease()" class="w-full mt-3 py-3 rounded-xl font-semibold text-white flex items-center justify-center gap-2" style="background:var(--primary-action);"> <i data-lucide="search" style="width:18px;height:18px;"></i> <span data-i18n="analyze_btn">Analyze Disease</span> </button>
+      </div>
+     </div>
+    </div><!-- Result -->
+    <div id="result-section" class="hidden card-enter">
+     <div class="rounded-2xl overflow-hidden" style="background:var(--surface-color);">
+      <div class="p-5">
+       <div class="flex items-center gap-2 mb-4">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center" style="background:var(--primary-action);"><i data-lucide="bug" style="width:16px;height:16px;color:#fff;"></i>
+        </div>
+        <h3 class="font-bold text-lg" data-i18n="result_title">Analysis Result</h3>
+       </div>
+       <div id="result-content" class="space-y-3"></div>
+      </div>
+     </div>
+    </div><!-- Quick Tips -->
+    <div class="rounded-2xl p-5" style="background:var(--surface-color);">
+     <h3 class="font-semibold mb-3 flex items-center gap-2"><i data-lucide="lightbulb" style="width:18px;height:18px;color:var(--primary-action);"></i> <span data-i18n="tips_title">Quick Tips</span></h3>
+     <div class="grid grid-cols-2 gap-2">
+      <div class="rounded-lg p-3 text-xs" style="background:var(--bg-color);"><span class="text-lg">📸</span>
+       <p class="mt-1 opacity-70" data-i18n="tip1">Take clear close-up photos of affected leaves</p>
+      </div>
+      <div class="rounded-lg p-3 text-xs" style="background:var(--bg-color);"><span class="text-lg">🌿</span>
+       <p class="mt-1 opacity-70" data-i18n="tip2">Include both healthy and diseased parts</p>
+      </div>
+     </div>
+    </div>
+   </div><!-- HISTORY PAGE -->
+   <div id="page-history" class="page flex-1 flex flex-col p-5 overflow-auto" style="display:none;">
+    <div class="flex items-center justify-between mb-4">
+     <h2 class="text-xl font-bold" data-i18n="history_title">Analysis History</h2><span id="history-count" class="text-sm opacity-50">0 records</span>
+    </div>
+    <div id="history-list" class="space-y-3 flex-1"></div>
+    <div id="history-empty" class="flex-1 flex flex-col items-center justify-center text-center opacity-40"><i data-lucide="inbox" style="width:48px;height:48px;"></i>
+     <p class="mt-3" data-i18n="history_empty">No analyses yet. Start by uploading a crop image!</p>
+    </div>
+   </div>
+  </div>
+  <script>
+// i18n
+const translations = {
+  en: {
+    nav_analyze: "Analyze", nav_history: "History",
+    drop_title: "Drag & Drop Crop Image", drop_sub: "or click to browse • JPG, PNG supported",
+    crop_label: "Crop Name", crop_placeholder: "e.g. Rice, Tomato", analyze_btn: "Analyze Disease",
+    result_title: "Analysis Result", tips_title: "Quick Tips",
+    tip1: "Take clear close-up photos of affected leaves",
+    tip2: "Include both healthy and diseased parts",
+    history_title: "Analysis History", history_empty: "No analyses yet. Start by uploading a crop image!",
+    lang_btn: "தமிழ்", records: "records",
+    disease: "Disease", severity: "Severity", damage: "Crop Damage", recommendations: "Recommendations",
+    low: "LOW", medium: "MEDIUM", high: "HIGH",
+    analyzing: "Analyzing...", delete_confirm: "Delete?", cancel: "Cancel",
+    unknown_crop: "Unknown Crop", save_limit: "Maximum 999 records reached. Delete old records first.",
+    save_failed: "Failed to save analysis.", delete_failed: "Delete failed."
+  },
+  ta: {
+    nav_analyze: "பகுப்பாய்வு", nav_history: "வரலாறு",
+    drop_title: "பயிர் படத்தை இழுத்து விடுங்கள்", drop_sub: "அல்லது கோப்பைத் தேர்வு செய்யுங்கள் • JPG, PNG",
+    crop_label: "பயிர் பெயர்", crop_placeholder: "எ.கா. நெல், தக்காளி", analyze_btn: "நோயைப் பகுப்பாய்வு செய்",
+    result_title: "பகுப்பாய்வு முடிவு", tips_title: "விரைவான குறிப்புகள்",
+    tip1: "பாதிக்கப்பட்ட இலைகளின் தெளிவான படங்களை எடுங்கள்",
+    tip2: "ஆரோக்கியமான மற்றும் நோயுற்ற பகுதிகளை சேர்க்கவும்",
+    history_title: "பகுப்பாய்வு வரலாறு", history_empty: "இன்னும் பகுப்பாய்வுகள் இல்லை. பயிர் படத்தைப் பதிவேற்றுங்கள்!",
+    lang_btn: "English", records: "பதிவுகள்",
+    disease: "நோய்", severity: "தீவிரம்", damage: "பயிர் சேதம்", recommendations: "பரிந்துரைகள்",
+    low: "குறைவு", medium: "நடுத்தரம்", high: "அதிகம்",
+    analyzing: "பகுப்பாய்வு செய்கிறது...", delete_confirm: "நீக்கவா?", cancel: "ரத்து",
+    unknown_crop: "தெரியாத பயிர்", save_limit: "அதிகபட்சம் 999 பதிவுகள் மட்டுமே. பழைய பதிவுகளை நீக்குங்கள்.",
+    save_failed: "பகுப்பாய்வை சேமிக்க முடியவில்லை.", delete_failed: "நீக்க முடியவில்லை."
+  }
+};
+
+let currentLang = 'en';
+let historyData = [];
+let lastAnalysis = null;
+
+function t(key) { return translations[currentLang][key] || translations.en[key] || key; }
+
+function toggleLang() {
+  currentLang = currentLang === 'en' ? 'ta' : 'en';
+  applyLang();
+}
+
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.getElementById('crop-name').placeholder = t('crop_placeholder');
+  document.getElementById('lang-toggle').textContent = t('lang_btn');
+  document.getElementById('history-count').textContent = `${historyData.length} ${t('records')}`;
+  document.body.style.fontFamily = currentLang === 'ta'
+    ? "'Noto Sans Tamil','DM Sans',sans-serif"
+    : "'DM Sans',sans-serif";
+  if (lastAnalysis) renderAnalysisResult(lastAnalysis.cropName, lastAnalysis.disease, lastAnalysis.damage);
+  renderHistory();
+}
+
+// Pages
+function showPage(page) {
+  document.querySelectorAll('.page').forEach(p => {
+    p.classList.remove('active');
+    p.style.display = 'none';
+  });
+  const activePage = document.getElementById('page-' + page);
+  activePage.classList.add('active');
+  activePage.style.display = 'flex';
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === page);
+    if (b.dataset.page !== page) b.style.background = 'transparent';
+  });
+}
+
+// Drag & Drop
+const dropZone = document.getElementById('drop-zone');
+['dragenter','dragover'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(e => dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); }));
+dropZone.addEventListener('drop', ev => {
+  const file = ev.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) loadFile(file);
+});
+
+function handleFile(ev) {
+  const file = ev.target.files[0];
+  if (file) loadFile(file);
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('preview-img').src = e.target.result;
+    document.getElementById('preview-section').classList.remove('hidden');
+    document.getElementById('drop-zone').classList.add('hidden');
+    document.getElementById('result-section').classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPreview() {
+  document.getElementById('preview-section').classList.add('hidden');
+  document.getElementById('drop-zone').classList.remove('hidden');
+  document.getElementById('result-section').classList.add('hidden');
+  document.getElementById('file-input').value = '';
+}
+
+// Disease database
+const diseases = {
+  rice: [
+    { name: "Blast / நெல் கருகல்", name_ta: "நெல் கருகல்", severity: "high", rec: "Apply Tricyclazole fungicide. Use resistant varieties.", rec_ta: "ட்ரைசைக்ளாசோல் பூஞ்சைக்கொல்லி பயன்படுத்துங்கள். எதிர்ப்பு சக்தி கொண்ட ரகங்களைப் பயன்படுத்துங்கள்." },
+    { name: "Brown Spot / பழுப்பு புள்ளி", name_ta: "பழுப்பு புள்ளி", severity: "medium", rec: "Apply potash fertilizer. Spray Mancozeb.", rec_ta: "பொட்டாஷ் உரம் இடுங்கள். மான்கோசெப் தெளிக்கவும்." }
+  ],
+  tomato: [
+    { name: "Early Blight / ஆரம்ப கருகல்", name_ta: "ஆரம்ப கருகல்", severity: "medium", rec: "Remove infected leaves. Apply copper-based fungicide.", rec_ta: "பாதிக்கப்பட்ட இலைகளை நீக்குங்கள். செப்பு பூஞ்சைக்கொல்லி தெளிக்கவும்." },
+    { name: "Late Blight / தாமத கருகல்", name_ta: "தாமத கருகல்", severity: "high", rec: "Apply Metalaxyl. Improve air circulation.", rec_ta: "மெட்டாலாக்சில் பயன்படுத்துங்கள். காற்றோட்டத்தை மேம்படுத்துங்கள்." }
+  ],
+  wheat: [
+    { name: "Rust / துரு நோய்", name_ta: "துரு நோய்", severity: "high", rec: "Apply Propiconazole. Use resistant varieties.", rec_ta: "புரோப்பிகோனசோல் தெளிக்கவும். எதிர்ப்பு சக்தி கொண்ட ரகங்களைப் பயன்படுத்துங்கள்." }
+  ],
+  cotton: [
+    { name: "Boll Rot / காய் அழுகல்", name_ta: "காய் அழுகல்", severity: "medium", rec: "Improve drainage. Apply Carbendazim.", rec_ta: "வடிகால் மேம்படுத்துங்கள். கார்பென்டாசிம் தெளிக்கவும்." }
+  ],
+  default: [
+    { name: "Leaf Spot / இலைப் புள்ளி", name_ta: "இலைப் புள்ளி", severity: "medium", rec: "Remove affected leaves. Apply Mancozeb fungicide.", rec_ta: "பாதிக்கப்பட்ட இலைகளை நீக்குங்கள். மான்கோசெப் பூஞ்சைக்கொல்லி தெளிக்கவும்." },
+    { name: "Powdery Mildew / வெள்ளைப் பூஞ்சை", name_ta: "வெள்ளைப் பூஞ்சை", severity: "low", rec: "Improve ventilation. Apply sulfur spray.", rec_ta: "காற்றோட்டத்தை அதிகரிக்கவும். சல்பர் தெளிப்பு பயன்படுத்துங்கள்." }
+  ]
+};
+
+function severityLabel(severity) {
+  return t(severity || 'medium');
+}
+
+function estimateDamage(severity) {
+  const ranges = {
+    low: [8, 20],
+    medium: [25, 45],
+    high: [50, 75]
+  };
+  const [min, max] = ranges[severity] || ranges.medium;
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getLocalizedDiseaseName(disease) {
+  return currentLang === 'ta' ? disease.name_ta : disease.name;
+}
+
+function getLocalizedRecommendation(disease) {
+  return currentLang === 'ta' ? disease.rec_ta : disease.rec;
+}
+
+function getHistoryText(item, field) {
+  if (currentLang === 'ta') return item[`${field}_ta`] || item[field] || '';
+  return item[`${field}_en`] || item[field] || '';
+}
+
+function renderAnalysisResult(cropName, disease, damage) {
+  const rc = document.getElementById('result-content');
+  const sevClass = `severity-${disease.severity}`;
+  rc.innerHTML = `
+    <div class="rounded-lg p-3" style="background:var(--bg-color);">
+      <p class="text-xs opacity-50 mb-1">🌾 ${cropName}</p>
+      <p class="font-bold">${t('disease')}: ${getLocalizedDiseaseName(disease)}</p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-semibold px-3 py-1 rounded-full ${sevClass}">${t('severity')}: ${severityLabel(disease.severity)}</span>
+      <span class="text-xs font-semibold px-3 py-1 rounded-full" style="background:var(--secondary-action);color:var(--text-color);">${t('damage')}: ${damage}%</span>
+    </div>
+    <div class="rounded-lg p-3" style="background:var(--bg-color);">
+      <p class="text-xs opacity-50 mb-1">${t('recommendations')}</p>
+      <p class="text-sm">${getLocalizedRecommendation(disease)}</p>
+    </div>
+  `;
+}
+
+async function analyzeDisease() {
+  const cropName = document.getElementById('crop-name').value.trim() || t('unknown_crop');
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = `<span class="analyzing inline-block w-5 h-5 rounded-full" style="border:2px solid #fff;border-top-color:transparent;animation:spin 0.6s linear infinite;"></span> ${t('analyzing')}`;
+
+  // Add spin keyframe
+  if (!document.getElementById('spin-style')) {
+    const s = document.createElement('style');
+    s.id = 'spin-style';
+    s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
+
+  await new Promise(r => setTimeout(r, 1800));
+
+  const key = cropName.toLowerCase();
+  const pool = diseases[key] || diseases.default;
+  const disease = pool[Math.floor(Math.random() * pool.length)];
+  const damage = estimateDamage(disease.severity);
+
+  // Show result
+  lastAnalysis = { cropName, disease, damage };
+  renderAnalysisResult(cropName, disease, damage);
+
+  document.getElementById('result-section').classList.remove('hidden');
+  document.getElementById('result-section').classList.add('card-enter');
+
+  btn.disabled = false;
+  btn.innerHTML = `<i data-lucide="search" style="width:18px;height:18px;"></i><span data-i18n="analyze_btn">${t('analyze_btn')}</span>`;
+  lucide.createIcons();
+
+  // Save to data SDK
+  if (historyData.length >= 999) {
+    showToast(t('save_limit'));
+    return;
+  }
+  const result = await window.dataSdk.create({
+    crop_name: cropName,
+    disease_name: getLocalizedDiseaseName(disease),
+    disease_name_en: disease.name,
+    disease_name_ta: disease.name_ta,
+    severity: disease.severity,
+    damage_percentage: damage,
+    recommendations: getLocalizedRecommendation(disease),
+    recommendations_en: disease.rec,
+    recommendations_ta: disease.rec_ta,
+    date: new Date().toISOString(),
+    language: currentLang
+  });
+  if (result.isError) showToast(t('save_failed'));
+}
+
+// Toast
+function showToast(msg) {
+  const toast = document.createElement('div');
+  toast.className = 'fixed bottom-5 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-sm font-medium z-50';
+  toast.style.cssText = 'background:var(--primary-action);color:#fff;';
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+// History rendering
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  const empty = document.getElementById('history-empty');
+  const countEl = document.getElementById('history-count');
+
+  countEl.textContent = `${historyData.length} ${t('records')}`;
+
+  if (historyData.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+
+  const existingMap = new Map([...list.children].map(el => [el.dataset.id, el]));
+  const sorted = [...historyData].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const fragment = document.createDocumentFragment();
+
+  sorted.forEach(item => {
+    const id = item.__backendId;
+    let card = existingMap.get(id);
+    if (card) {
+      updateHistoryCard(card, item);
+      existingMap.delete(id);
+    } else {
+      card = createHistoryCard(item);
+    }
+    fragment.appendChild(card);
+  });
+
+  existingMap.forEach(el => el.remove());
+  list.innerHTML = '';
+  list.appendChild(fragment);
+}
+
+function createHistoryCard(item) {
+  const card = document.createElement('div');
+  card.dataset.id = item.__backendId;
+  card.className = 'rounded-xl p-4 card-enter';
+  card.style.background = 'var(--surface-color)';
+  updateHistoryCard(card, item);
+  return card;
+}
+
+function updateHistoryCard(card, item) {
+  const sevClass = `severity-${item.severity}`;
+  const d = new Date(item.date);
+  const dateStr = d.toLocaleDateString(currentLang === 'ta' ? 'ta-IN' : 'en-US', { day:'numeric', month:'short', year:'numeric' });
+  const bid = item.__backendId;
+  const damage = item.damage_percentage || item.damage || '';
+  const damageText = damage ? `<span class="text-xs font-semibold px-2 py-0.5 rounded-full" style="background:var(--secondary-action);">${t('damage')}: ${damage}%</span>` : '';
+  const recommendation = getHistoryText(item, 'recommendations');
+
+  card.innerHTML = `
+    <div class="flex justify-between items-start mb-2">
+      <div>
+        <p class="font-bold">🌾 ${item.crop_name}</p>
+        <p class="text-sm opacity-70">${getHistoryText(item, 'disease_name')}</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-semibold px-2 py-0.5 rounded-full ${sevClass}">${severityLabel(item.severity)}</span>
+        <button class="del-btn w-7 h-7 rounded-full flex items-center justify-center opacity-40 hover:opacity-100" style="background:var(--bg-color);" data-bid="${bid}">
+          <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
+        </button>
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2 mb-2">${damageText}</div>
+    <p class="text-xs opacity-60 mb-2"><span class="font-semibold">${t('recommendations')}:</span> ${recommendation}</p>
+    <p class="text-xs opacity-40">${dateStr}</p>
+    <div class="confirm-del hidden mt-2 flex items-center gap-2">
+      <span class="text-xs">${t('delete_confirm')}</span>
+      <button class="confirm-yes text-xs px-3 py-1 rounded-lg font-medium" style="background:#ef4444;color:#fff;" data-bid="${bid}">🗑</button>
+      <button class="confirm-no text-xs px-3 py-1 rounded-lg" style="background:var(--secondary-action);">${t('cancel')}</button>
+    </div>
+  `;
+
+  const delBtn = card.querySelector('.del-btn');
+  const confirmDiv = card.querySelector('.confirm-del');
+  delBtn.addEventListener('click', () => confirmDiv.classList.toggle('hidden'));
+  card.querySelector('.confirm-no').addEventListener('click', () => confirmDiv.classList.add('hidden'));
+  card.querySelector('.confirm-yes').addEventListener('click', async function() {
+    this.disabled = true;
+    this.textContent = '...';
+    const rec = historyData.find(h => h.__backendId === bid);
+    if (rec) {
+      const res = await window.dataSdk.delete(rec);
+      if (res.isError) showToast(t('delete_failed'));
+    }
+  });
+  lucide.createIcons();
+}
+
+// Data SDK
+const dataHandler = {
+  onDataChanged(data) {
+    historyData = data;
+    renderHistory();
+  }
+};
+
+// Element SDK
+const defaultConfig = {
+  app_title: "CropShield",
+  tagline: "Protect your crops • உங்கள் பயிர்களைப் பாதுகாக்கவும்",
+  background_color: "#0f1a0f",
+  surface_color: "#1a2e1a",
+  text_color: "#e8f5e8",
+  primary_action: "#16a34a",
+  secondary_action: "#2d5a2d",
+  font_family: "DM Sans",
+  font_size: 16
+};
+
+function applyConfig(config) {
+  const r = document.documentElement.style;
+  r.setProperty('--bg-color', config.background_color || defaultConfig.background_color);
+  r.setProperty('--surface-color', config.surface_color || defaultConfig.surface_color);
+  r.setProperty('--text-color', config.text_color || defaultConfig.text_color);
+  r.setProperty('--primary-action', config.primary_action || defaultConfig.primary_action);
+  r.setProperty('--secondary-action', config.secondary_action || defaultConfig.secondary_action);
+
+  document.body.style.color = config.text_color || defaultConfig.text_color;
+  document.body.style.background = config.background_color || defaultConfig.background_color;
+
+  const font = config.font_family || defaultConfig.font_family;
+  document.body.style.fontFamily = `${font}, 'Noto Sans Tamil', sans-serif`;
+
+  const sz = config.font_size || defaultConfig.font_size;
+  document.getElementById('app-title').style.fontSize = `${sz * 1.2}px`;
+  document.getElementById('app-tagline').style.fontSize = `${sz * 0.75}px`;
+
+  document.getElementById('app-title').textContent = config.app_title || defaultConfig.app_title;
+  document.getElementById('app-tagline').textContent = config.tagline || defaultConfig.tagline;
+
+  // Update nav-btn active styles
+  document.querySelectorAll('.nav-btn.active').forEach(b => {
+    b.style.background = config.primary_action || defaultConfig.primary_action;
+  });
+}
+
+window.elementSdk.init({
+  defaultConfig,
+  onConfigChange: async (config) => { applyConfig(config); },
+  mapToCapabilities: (config) => ({
+    recolorables: [
+      { get: () => config.background_color || defaultConfig.background_color, set: v => { config.background_color = v; window.elementSdk.setConfig({ background_color: v }); } },
+      { get: () => config.surface_color || defaultConfig.surface_color, set: v => { config.surface_color = v; window.elementSdk.setConfig({ surface_color: v }); } },
+      { get: () => config.text_color || defaultConfig.text_color, set: v => { config.text_color = v; window.elementSdk.setConfig({ text_color: v }); } },
+      { get: () => config.primary_action || defaultConfig.primary_action, set: v => { config.primary_action = v; window.elementSdk.setConfig({ primary_action: v }); } },
+      { get: () => config.secondary_action || defaultConfig.secondary_action, set: v => { config.secondary_action = v; window.elementSdk.setConfig({ secondary_action: v }); } }
+    ],
+    borderables: [],
+    fontEditable: { get: () => config.font_family || defaultConfig.font_family, set: v => { config.font_family = v; window.elementSdk.setConfig({ font_family: v }); } },
+    fontSizeable: { get: () => config.font_size || defaultConfig.font_size, set: v => { config.font_size = v; window.elementSdk.setConfig({ font_size: v }); } }
+  }),
+  mapToEditPanelValues: (config) => new Map([
+    ["app_title", config.app_title || defaultConfig.app_title],
+    ["tagline", config.tagline || defaultConfig.tagline]
+  ])
+});
+
+(async () => {
+  const res = await window.dataSdk.init(dataHandler);
+  if (res.isError) console.error("Data SDK init failed");
+})();
+
+applyLang();
+showPage('home');
+lucide.createIcons();
+</script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9fab868f040afbfd',t:'MTc3ODYxMDk1MS4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
